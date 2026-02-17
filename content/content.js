@@ -59,31 +59,183 @@ if (window.__linkedinAutoEngageLoaded) {
     // POST SCRAPING
     // ==========================================
 
-    function getAllFeedPosts() {
-      // LinkedIn feed post containers - try multiple selectors
-      // LinkedIn frequently updates their class names, so we try several
-      const selectors = [
-        '.feed-shared-update-v2',
-        'div[data-id][class*="feed"]',
-        '[data-urn*="activity"]',
-        '.occludable-update',
-        'div.relative.feed-shared-update-v2--e2e'
+    function diagnoseFeed() {
+      // Log diagnostic info about the page DOM to help debug selector issues
+      console.log('[LAE] === FEED DIAGNOSTICS ===');
+      console.log('[LAE] URL:', window.location.href);
+      console.log('[LAE] Title:', document.title);
+
+      // Check for common feed container patterns
+      const diagnosticSelectors = [
+        'main', '[role="main"]',
+        '.scaffold-finite-scroll', '.scaffold-finite-scroll__content',
+        '.feed-shared-update-v2', '[data-urn]',
+        '[data-id]', '.occludable-update',
+        '.scaffold-layout__main',
+        // data-urn based
+        '[data-urn*="activity"]', '[data-urn*="ugcPost"]',
+        // Generic patterns
+        '[class*="feed"]', '[class*="update"]', '[class*="post"]',
+        // Aria patterns
+        '[aria-label*="feed"]', '[aria-label*="post"]',
+        // Like/comment buttons indicate posts exist
+        'button[aria-label*="Like"]', 'button[aria-label*="like"]',
+        'button[aria-label*="Comment"]', 'button[aria-label*="comment"]',
+        'button[aria-label*="React"]', 'button[aria-label*="react"]',
       ];
 
-      for (const selector of selectors) {
+      for (const sel of diagnosticSelectors) {
+        try {
+          const count = document.querySelectorAll(sel).length;
+          if (count > 0) {
+            const first = document.querySelector(sel);
+            const tag = first.tagName.toLowerCase();
+            const cls = first.className ? (typeof first.className === 'string' ? first.className.substring(0, 80) : '') : '';
+            console.log(`[LAE]   "${sel}" => ${count} found (first: <${tag} class="${cls}">)`);
+          }
+        } catch { /* skip invalid selectors */ }
+      }
+
+      // Log the main content area structure
+      const main = document.querySelector('main') || document.querySelector('[role="main"]');
+      if (main) {
+        console.log('[LAE] Main element children:', main.children.length);
+        for (let i = 0; i < Math.min(main.children.length, 5); i++) {
+          const child = main.children[i];
+          console.log(`[LAE]   child[${i}]: <${child.tagName.toLowerCase()} class="${(child.className || '').toString().substring(0, 80)}">`);
+        }
+      }
+    }
+
+    function getAllFeedPosts() {
+      // Strategy 1: Direct known selectors (class-based, most specific)
+      const classSelectors = [
+        '.feed-shared-update-v2',
+        '.occludable-update',
+      ];
+
+      for (const selector of classSelectors) {
         const posts = document.querySelectorAll(selector);
-        if (posts.length > 0) return Array.from(posts);
+        if (posts.length > 0) {
+          console.log(`[LAE] Found ${posts.length} posts via "${selector}"`);
+          return Array.from(posts);
+        }
       }
 
-      // Last resort: look for the main feed container and find post-like divs
-      const mainFeed = document.querySelector('.scaffold-finite-scroll__content') ||
-                       document.querySelector('[role="main"]');
-      if (mainFeed) {
-        const candidates = mainFeed.querySelectorAll(':scope > div > div');
-        if (candidates.length > 2) return Array.from(candidates);
+      // Strategy 2: data-urn attribute (LinkedIn tags posts with URNs)
+      const urnSelectors = [
+        '[data-urn*="urn:li:activity"]',
+        '[data-urn*="urn:li:ugcPost"]',
+        '[data-urn*="activity"]',
+        '[data-urn*="ugcPost"]',
+        '[data-id*="urn:li:activity"]',
+        '[data-id*="urn:li:ugcPost"]',
+      ];
+
+      for (const selector of urnSelectors) {
+        const posts = document.querySelectorAll(selector);
+        if (posts.length > 0) {
+          console.log(`[LAE] Found ${posts.length} posts via "${selector}"`);
+          return Array.from(posts);
+        }
       }
 
+      // Strategy 3: Find posts by looking for Like/React buttons and walking up to the post container
+      const likeButtons = document.querySelectorAll(
+        'button[aria-label*="Like"], button[aria-label*="like"], ' +
+        'button[aria-label*="React"], button[aria-label*="react"]'
+      );
+
+      if (likeButtons.length > 0) {
+        console.log(`[LAE] Found ${likeButtons.length} like/react buttons, finding parent posts...`);
+        const postSet = new Set();
+        for (const btn of likeButtons) {
+          // Walk up the DOM to find the post container
+          // A post container is typically a significant-sized div that contains both
+          // the post content and the social actions bar
+          let el = btn.parentElement;
+          let depth = 0;
+          while (el && depth < 15) {
+            // A post container typically has substantial height and is a direct
+            // child or near-child of the feed scroll container
+            if (el.tagName === 'DIV' && el.offsetHeight > 150) {
+              // Check if this element looks like a post (has text content AND social buttons)
+              const hasText = el.textContent.length > 100;
+              const hasSocialBar = el.querySelector(
+                'button[aria-label*="Like"], button[aria-label*="like"], ' +
+                'button[aria-label*="React"], button[aria-label*="react"]'
+              );
+              // Make sure we're not selecting the entire feed
+              const notTooLarge = el.offsetHeight < window.innerHeight * 2;
+
+              if (hasText && hasSocialBar && notTooLarge) {
+                // Check if parent is a list/feed container (not another post)
+                const parent = el.parentElement;
+                if (parent && (
+                  parent.children.length > 2 ||
+                  parent.classList.toString().includes('feed') ||
+                  parent.classList.toString().includes('scroll') ||
+                  parent.getAttribute('role') === 'main' ||
+                  parent.tagName === 'MAIN'
+                )) {
+                  postSet.add(el);
+                  break;
+                }
+              }
+            }
+            el = el.parentElement;
+            depth++;
+          }
+        }
+
+        if (postSet.size > 0) {
+          const posts = Array.from(postSet);
+          console.log(`[LAE] Identified ${posts.length} unique posts from like buttons`);
+          return posts;
+        }
+      }
+
+      // Strategy 4: Find the feed scroll container and get its direct children
+      const feedContainers = [
+        '.scaffold-finite-scroll__content',
+        '.scaffold-finite-scroll',
+        'main [class*="scaffold"] [class*="content"]',
+        '[role="main"]',
+        'main',
+      ];
+
+      for (const containerSel of feedContainers) {
+        const container = document.querySelector(containerSel);
+        if (!container) continue;
+
+        // Look for immediate child divs that look like posts (have reasonable size)
+        const children = container.querySelectorAll(':scope > div, :scope > div > div, :scope > li');
+        const posts = Array.from(children).filter(el => {
+          return el.offsetHeight > 100 &&
+                 el.textContent.length > 50 &&
+                 el.offsetHeight < window.innerHeight * 2;
+        });
+
+        if (posts.length >= 2) {
+          console.log(`[LAE] Found ${posts.length} posts via feed container "${containerSel}"`);
+          return posts;
+        }
+      }
+
+      // Nothing found - run diagnostics
+      console.log('[LAE] No posts found with any strategy!');
+      diagnoseFeed();
       return [];
+    }
+
+    function firstText(element, selectors) {
+      for (const sel of selectors) {
+        const el = element.querySelector(sel);
+        if (el && el.textContent.trim()) {
+          return el.textContent.trim();
+        }
+      }
+      return '';
     }
 
     function extractPostData(postElement) {
@@ -100,111 +252,124 @@ if (window.__linkedinAutoEngageLoaded) {
 
       try {
         // Author name - try multiple selector patterns
-        const authorSelectors = [
+        data.authorName = firstText(postElement, [
           '.update-components-actor__name .visually-hidden',
           '.update-components-actor__title .visually-hidden',
           '.feed-shared-actor__name .visually-hidden',
           '.update-components-actor__name span[aria-hidden="true"]',
-          'a.update-components-actor__meta-link span.visually-hidden',
-          '.update-components-actor__title span[dir="ltr"] span[aria-hidden="true"]'
-        ];
-        for (const sel of authorSelectors) {
-          const el = postElement.querySelector(sel);
-          if (el && el.textContent.trim()) {
-            data.authorName = el.textContent.trim();
-            break;
+          '.update-components-actor__title span[dir="ltr"] span[aria-hidden="true"]',
+          'a[class*="actor"] span.visually-hidden',
+          'a[class*="actor"] span[aria-hidden="true"]',
+          '[data-control-name*="actor"] span',
+        ]);
+
+        // If still no name, try to find the first link that looks like a profile
+        if (!data.authorName) {
+          const links = postElement.querySelectorAll('a[href*="/in/"]');
+          for (const link of links) {
+            const text = link.textContent.trim();
+            // Profile names are typically short and don't contain certain keywords
+            if (text && text.length > 2 && text.length < 60 && !text.includes('comment') && !text.includes('like')) {
+              data.authorName = text;
+              break;
+            }
           }
         }
 
         // Author headline
-        const headlineSelectors = [
+        data.authorHeadline = firstText(postElement, [
           '.update-components-actor__description .visually-hidden',
-          '.feed-shared-actor__description .visually-hidden',
           '.update-components-actor__subtitle .visually-hidden',
-          '.update-components-actor__description span[aria-hidden="true"]'
-        ];
-        for (const sel of headlineSelectors) {
-          const el = postElement.querySelector(sel);
-          if (el && el.textContent.trim()) {
-            data.authorHeadline = el.textContent.trim();
-            break;
-          }
-        }
+          '.update-components-actor__description span[aria-hidden="true"]',
+          '.feed-shared-actor__description .visually-hidden',
+          '[class*="actor__subtitle"] span',
+          '[class*="actor__description"] span',
+        ]);
 
         // Post content - try multiple selector patterns
         const contentSelectors = [
           '.feed-shared-update-v2__description',
           '.update-components-text',
           '.feed-shared-text',
-          '.break-words',
           '.feed-shared-inline-show-more-text',
-          'div[class*="update-components-text"] span[dir="ltr"]'
+          'div[class*="update-components-text"]',
+          'div[class*="feed-shared-text"]',
+          'span[dir="ltr"]',
+          '.break-words',
         ];
         for (const sel of contentSelectors) {
           const el = postElement.querySelector(sel);
-          if (el && el.textContent.trim().length > 10) {
+          if (el && el.textContent.trim().length > 20) {
             data.content = el.textContent.trim().substring(0, 2000);
             break;
           }
         }
 
-        // Like count
-        const likeSelectors = [
-          '.social-details-social-counts__reactions-count',
-          '[data-test-id="social-actions__reaction-count"]',
-          '.reactions-count',
-          'button[aria-label*="reaction"] span',
-          'span.social-details-social-counts__reactions-count'
-        ];
-        for (const sel of likeSelectors) {
-          const el = postElement.querySelector(sel);
-          if (el && el.textContent.trim()) {
-            data.likeCount = parseReactionCount(el.textContent.trim());
-            if (data.likeCount > 0) break;
+        // If no content found via selectors, try to extract text from the middle portion of the post
+        if (!data.content) {
+          const allText = postElement.textContent || '';
+          // Skip author area (first ~100 chars) and social area (last ~100 chars)
+          if (allText.length > 250) {
+            data.content = allText.substring(100, Math.min(allText.length - 100, 2100)).trim();
           }
         }
 
-        // Comment count
+        // Like count - check aria-labels of reaction buttons/spans
+        const likeSelectors = [
+          '.social-details-social-counts__reactions-count',
+          '[data-test-id="social-actions__reaction-count"]',
+          'button[aria-label*="reaction"]',
+          'span[class*="reactions-count"]',
+          'button[aria-label*="like" i]',
+        ];
+        for (const sel of likeSelectors) {
+          const el = postElement.querySelector(sel);
+          if (el) {
+            // Try aria-label first (e.g., "5 reactions")
+            const ariaLabel = el.getAttribute('aria-label') || '';
+            const fromAria = parseReactionCount(ariaLabel);
+            if (fromAria > 0) { data.likeCount = fromAria; break; }
+            // Then try text content
+            const fromText = parseReactionCount(el.textContent.trim());
+            if (fromText > 0) { data.likeCount = fromText; break; }
+          }
+        }
+
+        // Comment count - check aria-labels
         const commentSelectors = [
           '.social-details-social-counts__comments',
-          'button[aria-label*="comment"]',
-          'li.social-details-social-counts__item:nth-child(2) button'
+          'button[aria-label*="comment" i]',
+          '[class*="social-counts__comments"]',
         ];
         for (const sel of commentSelectors) {
           const el = postElement.querySelector(sel);
-          if (el && el.textContent.trim()) {
-            data.commentCount = parseReactionCount(el.textContent.trim());
-            if (data.commentCount > 0) break;
+          if (el) {
+            const ariaLabel = el.getAttribute('aria-label') || '';
+            const fromAria = parseReactionCount(ariaLabel);
+            if (fromAria > 0) { data.commentCount = fromAria; break; }
+            const fromText = parseReactionCount(el.textContent.trim());
+            if (fromText > 0) { data.commentCount = fromText; break; }
           }
         }
 
         // Post age
-        const timeSelectors = [
+        data.postAge = firstText(postElement, [
           '.update-components-actor__sub-description .visually-hidden',
           '.feed-shared-actor__sub-description .visually-hidden',
           'time',
-          'span.update-components-actor__sub-description span[aria-hidden="true"]'
-        ];
-        for (const sel of timeSelectors) {
-          const el = postElement.querySelector(sel);
-          if (el && el.textContent.trim()) {
-            data.postAge = el.textContent.trim();
-            break;
-          }
-        }
+          'span[class*="actor__sub-description"] span[aria-hidden="true"]',
+          '[class*="sub-description"]',
+        ]);
 
-        // Already liked check
-        const likeBtnSelectors = [
-          'button[aria-label*="Like"]',
-          'button[aria-label*="like"]',
-          '.reactions-react-button',
-          'button.react-button__trigger[aria-pressed]'
-        ];
-        for (const sel of likeBtnSelectors) {
-          const el = postElement.querySelector(sel);
-          if (el) {
-            const pressed = el.getAttribute('aria-pressed');
-            data.alreadyLiked = pressed === 'true';
+        // Already liked check - look for any Like/React button with pressed state
+        const likeBtns = postElement.querySelectorAll(
+          'button[aria-label*="Like" i], button[aria-label*="React" i], ' +
+          '[class*="react-button"]'
+        );
+        for (const btn of likeBtns) {
+          const pressed = btn.getAttribute('aria-pressed');
+          if (pressed === 'true') {
+            data.alreadyLiked = true;
             break;
           }
         }
@@ -236,19 +401,33 @@ if (window.__linkedinAutoEngageLoaded) {
     // ==========================================
 
     async function likePost(postElement) {
-      // Try multiple selectors for the like button
-      const likeBtnSelectors = [
-        'button[aria-label*="Like"]',
-        'button[aria-label*="like"]',
-        '.reactions-react-button',
-        'button.react-button__trigger',
-        'button[data-test-id*="like"]'
-      ];
-
+      // Find the Like button - prioritize by aria-label, then by class
       let likeBtn = null;
-      for (const sel of likeBtnSelectors) {
-        likeBtn = postElement.querySelector(sel);
-        if (likeBtn) break;
+
+      // First look for buttons with "Like" in aria-label that are NOT already pressed
+      const allButtons = postElement.querySelectorAll('button');
+      for (const btn of allButtons) {
+        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+        if (label.includes('like') || label.includes('react')) {
+          // Skip repost/share buttons
+          if (label.includes('repost') || label.includes('share') || label.includes('send')) continue;
+          likeBtn = btn;
+          break;
+        }
+      }
+
+      // Fallback to class-based selectors
+      if (!likeBtn) {
+        const selectors = [
+          '.reactions-react-button',
+          'button.react-button__trigger',
+          '[class*="react-button"]',
+          'button[data-test-id*="like"]'
+        ];
+        for (const sel of selectors) {
+          likeBtn = postElement.querySelector(sel);
+          if (likeBtn) break;
+        }
       }
 
       if (!likeBtn) {
@@ -270,23 +449,33 @@ if (window.__linkedinAutoEngageLoaded) {
 
       // Verify - check aria-pressed or class changes
       const isNowLiked = likeBtn.getAttribute('aria-pressed') === 'true' ||
-                          likeBtn.classList.contains('react-button--active');
+                          likeBtn.classList.toString().includes('active');
       return isNowLiked;
     }
 
     async function commentOnPost(postElement, commentText) {
-      // Find and click the comment button to open comment box
-      const commentBtnSelectors = [
-        'button[aria-label*="Comment"]',
-        'button[aria-label*="comment"]',
-        'button[data-test-id*="comment"]',
-        '.comment-button'
-      ];
-
+      // Find the Comment button
       let commentBtn = null;
-      for (const sel of commentBtnSelectors) {
-        commentBtn = postElement.querySelector(sel);
-        if (commentBtn) break;
+
+      const allButtons = postElement.querySelectorAll('button');
+      for (const btn of allButtons) {
+        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+        if (label.includes('comment') && !label.includes('reaction')) {
+          commentBtn = btn;
+          break;
+        }
+      }
+
+      // Fallback
+      if (!commentBtn) {
+        const selectors = [
+          'button[class*="comment-button"]',
+          '[class*="comment"] button',
+        ];
+        for (const sel of selectors) {
+          commentBtn = postElement.querySelector(sel);
+          if (commentBtn) break;
+        }
       }
 
       if (!commentBtn) {
@@ -643,8 +832,34 @@ User's interests for context: ${settings.preferences.join(', ')}`
         return; // Page will reload, user needs to click Start again
       }
 
-      // Wait for feed to load
-      await sleep(3000);
+      // Wait for feed to actually load by polling for posts
+      updateOverlay('Waiting for feed to load...', 5);
+      let feedReady = false;
+      for (let wait = 0; wait < 15; wait++) {
+        await sleep(1000);
+        const testPosts = getAllFeedPosts();
+        if (testPosts.length > 0) {
+          feedReady = true;
+          await addLog(`Feed loaded with ${testPosts.length} initial posts.`, 'info');
+          break;
+        }
+        if (wait === 5) {
+          // After 5 seconds, try scrolling down a bit to trigger lazy loading
+          window.scrollBy({ top: 300, behavior: 'smooth' });
+        }
+        if (wait === 10) {
+          await addLog('Feed loading slowly, still waiting...', 'info');
+          window.scrollBy({ top: 500, behavior: 'smooth' });
+        }
+      }
+
+      if (!feedReady) {
+        await addLog('Could not find posts in feed. LinkedIn may have updated their page structure. Check browser console for diagnostics.', 'error');
+        await updateState({ isRunning: false });
+        isRunning = false;
+        removeOverlay();
+        return;
+      }
 
       let postsProcessed = 0;
       let postsEngaged = 0;
