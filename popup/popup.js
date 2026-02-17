@@ -22,54 +22,66 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Poll for updates while popup is open
   const pollInterval = setInterval(refreshUI, 1000);
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   async function refreshUI() {
-    const state = await Storage.getState();
-    const settings = await Storage.getSettings();
+    try {
+      const state = await Storage.getState();
+      const settings = await Storage.getSettings();
 
-    // Check API key
-    if (!settings.apiKey) {
-      apikeyWarning.classList.remove('hidden');
-    } else {
-      apikeyWarning.classList.add('hidden');
-    }
-
-    // Update buttons
-    if (state.isRunning) {
-      startBtn.classList.add('hidden');
-      stopBtn.classList.remove('hidden');
-      setStatus('running', '🔄', `Processing posts... (${state.postsProcessed}/${settings.maxPostsToEngage})`);
-    } else {
-      startBtn.classList.remove('hidden');
-      stopBtn.classList.add('hidden');
-      if (state.postsProcessed > 0) {
-        setStatus('done', '✅', `Done! Engaged with ${state.postsEngaged} posts`);
+      // Check API key
+      if (!settings.apiKey) {
+        apikeyWarning.classList.remove('hidden');
       } else {
-        setStatus('idle', '⏸', 'Ready to start');
+        apikeyWarning.classList.add('hidden');
       }
-    }
 
-    // Update stats
-    if (state.postsProcessed > 0 || state.isRunning) {
-      statsSection.classList.remove('hidden');
-      document.getElementById('stat-processed').textContent = state.postsProcessed;
-      document.getElementById('stat-engaged').textContent = state.postsEngaged;
-      document.getElementById('stat-skipped').textContent = state.postsSkipped;
-      document.getElementById('stat-daily').textContent = settings.todayEngagementCount || 0;
-    }
+      // Update buttons
+      if (state.isRunning) {
+        startBtn.classList.add('hidden');
+        stopBtn.classList.remove('hidden');
+        setStatus('running', '🔄', `Processing posts... (${state.postsProcessed}/${settings.maxPostsToEngage})`);
+      } else {
+        startBtn.classList.remove('hidden');
+        stopBtn.classList.add('hidden');
+        if (state.postsProcessed > 0) {
+          setStatus('done', '✅', `Done! Engaged with ${state.postsEngaged} posts`);
+        } else {
+          setStatus('idle', '⏸', 'Ready to start');
+        }
+      }
 
-    // Update log
-    if (state.log && state.log.length > 0) {
-      logSection.classList.remove('hidden');
-      logContainer.innerHTML = state.log.map(entry => {
-        const time = new Date(entry.timestamp).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-        return `<div class="log-entry">
-          <span class="log-time">${time}</span>
-          <span class="log-msg log-${entry.type}">${entry.message}</span>
-        </div>`;
-      }).join('');
+      // Update stats
+      if (state.postsProcessed > 0 || state.isRunning) {
+        statsSection.classList.remove('hidden');
+        document.getElementById('stat-processed').textContent = state.postsProcessed;
+        document.getElementById('stat-engaged').textContent = state.postsEngaged;
+        document.getElementById('stat-skipped').textContent = state.postsSkipped;
+        document.getElementById('stat-daily').textContent = settings.todayEngagementCount || 0;
+      }
+
+      // Update log
+      if (state.log && state.log.length > 0) {
+        logSection.classList.remove('hidden');
+        logContainer.innerHTML = state.log.map(entry => {
+          const time = new Date(entry.timestamp).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          const safeType = escapeHtml(entry.type || 'info');
+          const safeMsg = escapeHtml(entry.message || '');
+          return `<div class="log-entry">
+            <span class="log-time">${escapeHtml(time)}</span>
+            <span class="log-msg log-${safeType}">${safeMsg}</span>
+          </div>`;
+        }).join('');
+      }
+    } catch (err) {
+      console.error('[LAE Popup] refreshUI error:', err);
     }
   }
 
@@ -91,44 +103,64 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Check daily limit
     await Storage.resetDailyCount();
-    if (settings.todayEngagementCount >= settings.dailyEngagementLimit) {
-      setStatus('error', '🚫', `Daily limit reached (${settings.dailyEngagementLimit})`);
+    const refreshedSettings = await Storage.getSettings();
+    if (refreshedSettings.todayEngagementCount >= refreshedSettings.dailyEngagementLimit) {
+      setStatus('error', '🚫', `Daily limit reached (${refreshedSettings.dailyEngagementLimit})`);
       return;
     }
 
-    // Find LinkedIn tab or open one
-    const tabs = await chrome.tabs.query({ url: 'https://www.linkedin.com/*' });
+    // Disable start button to prevent double-clicks
+    startBtn.disabled = true;
+    setStatus('running', '🔄', 'Opening LinkedIn...');
 
-    if (tabs.length === 0) {
-      // Open LinkedIn
-      const tab = await chrome.tabs.create({ url: 'https://www.linkedin.com/feed/' });
-      // Wait for the tab to load and then send start message
-      chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-        if (tabId === tab.id && info.status === 'complete') {
-          chrome.tabs.onUpdated.removeListener(listener);
-          sendStartMessage(tab.id);
-        }
-      });
-    } else {
-      // Navigate to feed if not already there
-      const tab = tabs[0];
-      await chrome.tabs.update(tab.id, { active: true });
-      const url = new URL(tab.url);
-      if (url.pathname !== '/feed/' && url.pathname !== '/feed') {
-        await chrome.tabs.update(tab.id, { url: 'https://www.linkedin.com/feed/' });
-        chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-          if (tabId === tab.id && info.status === 'complete') {
-            chrome.tabs.onUpdated.removeListener(listener);
-            sendStartMessage(tab.id);
-          }
-        });
+    try {
+      // Find LinkedIn tab or open one
+      const tabs = await chrome.tabs.query({ url: 'https://www.linkedin.com/*' });
+
+      if (tabs.length === 0) {
+        // Open LinkedIn
+        const tab = await chrome.tabs.create({ url: 'https://www.linkedin.com/feed/' });
+        waitForTabAndStart(tab.id);
       } else {
-        sendStartMessage(tab.id);
+        // Use existing LinkedIn tab
+        const tab = tabs[0];
+        await chrome.tabs.update(tab.id, { active: true });
+
+        // Check if we need to navigate to feed
+        // Use try/catch since tab.url might not be accessible without tabs permission on the specific tab
+        try {
+          const tabInfo = await chrome.tabs.get(tab.id);
+          const url = new URL(tabInfo.url);
+          if (url.pathname !== '/feed/' && url.pathname !== '/feed') {
+            await chrome.tabs.update(tab.id, { url: 'https://www.linkedin.com/feed/' });
+            waitForTabAndStart(tab.id);
+          } else {
+            // Already on feed, inject and start
+            await injectAndStart(tab.id);
+          }
+        } catch {
+          // If we can't read URL, just try to start
+          await injectAndStart(tab.id);
+        }
       }
+    } catch (err) {
+      setStatus('error', '❌', 'Failed to open LinkedIn');
+      await Storage.addLogEntry('Failed: ' + err.message, 'error');
+      startBtn.disabled = false;
     }
   });
 
-  async function sendStartMessage(tabId) {
+  function waitForTabAndStart(tabId) {
+    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
+      if (updatedTabId === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        // Give extra time for LinkedIn's JS to initialize
+        setTimeout(() => injectAndStart(tabId), 2000);
+      }
+    });
+  }
+
+  async function injectAndStart(tabId) {
     // Reset state
     await Storage.saveState({
       isRunning: true,
@@ -140,37 +172,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     await Storage.addLogEntry('Starting automation...', 'info');
 
-    // Send message to content script
+    // Always try to inject the content script first (it's idempotent due to IIFE check)
     try {
-      await chrome.tabs.sendMessage(tabId, { action: 'START_AUTOMATION' });
-    } catch {
-      // Content script might not be injected yet, inject it
       await chrome.scripting.executeScript({
         target: { tabId },
-        files: ['lib/storage.js', 'lib/llm.js', 'content/content.js']
+        files: ['content/content.js']
       });
-      // Retry
-      setTimeout(async () => {
-        try {
-          await chrome.tabs.sendMessage(tabId, { action: 'START_AUTOMATION' });
-        } catch (err) {
-          await Storage.addLogEntry('Failed to start: ' + err.message, 'error');
-          await Storage.saveState({
-            ...(await Storage.getState()),
-            isRunning: false
-          });
-        }
-      }, 1000);
+    } catch (err) {
+      console.log('[LAE] Script injection note:', err.message);
+      // Content script may already be loaded via manifest, that's OK
     }
 
+    // Give content script time to initialize
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Send start message with retries
+    let started = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await chrome.tabs.sendMessage(tabId, { action: 'START_AUTOMATION' });
+        if (response && response.started) {
+          started = true;
+          break;
+        }
+      } catch {
+        // Wait and retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    if (!started) {
+      await Storage.addLogEntry('Failed to communicate with LinkedIn page. Try refreshing the page.', 'error');
+      await Storage.saveState({
+        ...(await Storage.getState()),
+        isRunning: false
+      });
+      setStatus('error', '❌', 'Failed to start. Refresh LinkedIn page.');
+    }
+
+    startBtn.disabled = false;
     refreshUI();
   }
 
   // Stop button
   stopBtn.addEventListener('click', async () => {
     const tabs = await chrome.tabs.query({ url: 'https://www.linkedin.com/*' });
-    if (tabs.length > 0) {
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'STOP_AUTOMATION' });
+    for (const tab of tabs) {
+      try {
+        await chrome.tabs.sendMessage(tab.id, { action: 'STOP_AUTOMATION' });
+      } catch {
+        // Tab might not have content script
+      }
     }
 
     const state = await Storage.getState();
