@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Auto Engage - Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>⚙ Settings</h1>
+      <p class="subtitle">Configure your LinkedIn Auto Engage preferences</p>
+    </header>
+
+    <!-- LLM Configuration -->
+    <section class="card">
+      <h2>AI / LLM Configuration</h2>
+      <div class="form-group">
+        <label for="llm-provider">LLM Provider</label>
+        <select id="llm-provider">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="api-key">API Key</label>
+        <div class="input-with-toggle">
+          <input type="password" id="api-key" placeholder="Enter your API key">
+          <button type="button" id="toggle-key" class="btn-icon-only">👁</button>
+        </div>
+        <small class="help-text">Your API key is stored locally and never shared.</small>
+      </div>
+      <div class="form-group">
+        <label for="model">Model</label>
+        <input type="text" id="model" placeholder="e.g., gpt-4o-mini or claude-sonnet-4-20250514">
+        <small class="help-text" id="model-hint">Recommended: gpt-4o-mini (fast and affordable)</small>
+      </div>
+    </section>
+
+    <!-- User Preferences -->
+    <section class="card">
+      <h2>Your Interest Topics</h2>
+      <p class="section-desc">Select or add topics you're interested in. Posts matching these topics will be prioritized.</p>
+      <div class="tags-container" id="preferences-tags"></div>
+      <div class="add-tag-row">
+        <input type="text" id="new-preference" placeholder="Add a topic (e.g., Machine Learning)">
+        <button id="add-preference" class="btn btn-small btn-primary">+ Add</button>
+      </div>
+      <div class="preset-topics">
+        <span class="preset-label">Quick add:</span>
+        <button class="btn-preset" data-topic="Technology">Technology</button>
+        <button class="btn-preset" data-topic="Software Engineering">Software Engineering</button>
+        <button class="btn-preset" data-topic="Artificial Intelligence">AI</button>
+        <button class="btn-preset" data-topic="Startups">Startups</button>
+        <button class="btn-preset" data-topic="Marketing">Marketing</button>
+        <button class="btn-preset" data-topic="Leadership">Leadership</button>
+        <button class="btn-preset" data-topic="Content Creation">Content Creation</button>
+        <button class="btn-preset" data-topic="Product Management">Product Management</button>
+        <button class="btn-preset" data-topic="Data Science">Data Science</button>
+        <button class="btn-preset" data-topic="Design">Design</button>
+        <button class="btn-preset" data-topic="Finance">Finance</button>
+        <button class="btn-preset" data-topic="Career Growth">Career Growth</button>
+      </div>
+    </section>
+
+    <!-- Engagement Criteria -->
+    <section class="card">
+      <h2>Engagement Criteria</h2>
+      <p class="section-desc">Set thresholds to determine which posts are worth engaging with.</p>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="min-likes">Minimum Likes</label>
+          <input type="number" id="min-likes" min="0" max="10000">
+          <small class="help-text">Posts must have at least this many likes</small>
+        </div>
+        <div class="form-group">
+          <label for="min-comments">Minimum Comments</label>
+          <input type="number" id="min-comments" min="0" max="5000">
+          <small class="help-text">Posts must have at least this many comments</small>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="max-post-age">Max Post Age (days)</label>
+          <input type="number" id="max-post-age" min="1" max="30">
+        </div>
+        <div class="form-group">
+          <label for="engage-big-creators">
+            <input type="checkbox" id="engage-big-creators">
+            Prioritize Big Creators
+          </label>
+          <small class="help-text">Auto-engage with creators who have many followers</small>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="big-creator-threshold">Big Creator Follower Threshold</label>
+        <input type="number" id="big-creator-threshold" min="100" max="10000000">
+        <small class="help-text">Creators with this many followers are considered "big"</small>
+      </div>
+    </section>
+
+    <!-- Saved Creators -->
+    <section class="card">
+      <h2>Priority Creators</h2>
+      <p class="section-desc">Always engage with posts from these creators, regardless of other criteria.</p>
+      <div class="tags-container" id="creators-tags"></div>
+      <div class="add-tag-row">
+        <input type="text" id="new-creator" placeholder="Creator name (e.g., Satya Nadella)">
+        <button id="add-creator" class="btn btn-small btn-primary">+ Add</button>
+      </div>
+    </section>
+
+    <!-- Automation Settings -->
+    <section class="card">
+      <h2>Automation Settings</h2>
+
+      <div class="form-group">
+        <label for="max-posts">Posts to Engage Per Session</label>
+        <input type="number" id="max-posts" min="1" max="100">
+        <small class="help-text">Maximum number of posts to process per run</small>
+      </div>
+
+      <div class="form-group">
+        <label for="delay-between">Delay Between Actions (seconds)</label>
+        <input type="number" id="delay-between" min="2" max="60">
+        <small class="help-text">Wait time between each post interaction (min 2s for safety)</small>
+      </div>
+
+      <div class="form-group">
+        <label for="daily-limit">Daily Engagement Limit</label>
+        <input type="number" id="daily-limit" min="1" max="200">
+        <small class="help-text">Maximum total engagements per day across all sessions</small>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="enable-liking">
+            <input type="checkbox" id="enable-liking">
+            Enable Liking
+          </label>
+        </div>
+        <div class="form-group">
+          <label for="enable-commenting">
+            <input type="checkbox" id="enable-commenting">
+            Enable Commenting
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comment Settings -->
+    <section class="card">
+      <h2>Comment Settings</h2>
+
+      <div class="form-group">
+        <label for="comment-tone">Comment Tone</label>
+        <select id="comment-tone">
+          <option value="professional">Professional & Insightful</option>
+          <option value="casual">Friendly & Conversational</option>
+          <option value="enthusiastic">Enthusiastic & Supportive</option>
+          <option value="thoughtful">Thoughtful & Analytical</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="comment-max-length">Max Comment Length (characters)</label>
+        <input type="number" id="comment-max-length" min="50" max="1000">
+      </div>
+    </section>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button id="save-btn" class="btn btn-primary btn-large">Save Settings</button>
+      <button id="reset-btn" class="btn btn-secondary">Reset to Defaults</button>
+    </div>
+
+    <div id="save-toast" class="toast hidden">Settings saved!</div>
+  </div>
+
+  <script src="../lib/storage.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

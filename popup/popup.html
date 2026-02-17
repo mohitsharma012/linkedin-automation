@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Auto Engage</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>LinkedIn Auto Engage</h1>
+      <p class="subtitle">AI-Powered Post Engagement</p>
+    </header>
+
+    <!-- Status Banner -->
+    <div id="status-banner" class="status-banner status-idle">
+      <span id="status-icon" class="status-icon">⏸</span>
+      <span id="status-text">Ready to start</span>
+    </div>
+
+    <!-- Login Warning -->
+    <div id="login-warning" class="warning hidden">
+      <span class="warning-icon">⚠️</span>
+      <span>Please log in to LinkedIn first, then click Start.</span>
+    </div>
+
+    <!-- API Key Warning -->
+    <div id="apikey-warning" class="warning hidden">
+      <span class="warning-icon">🔑</span>
+      <span>API key not set. Go to <a href="#" id="settings-link-warn">Settings</a> to configure.</span>
+    </div>
+
+    <!-- Main Controls -->
+    <div class="controls">
+      <button id="start-btn" class="btn btn-primary btn-large">
+        <span class="btn-icon">▶</span> Start
+      </button>
+      <button id="stop-btn" class="btn btn-danger btn-large hidden">
+        <span class="btn-icon">■</span> Stop
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div id="stats" class="stats hidden">
+      <div class="stat-item">
+        <span class="stat-value" id="stat-processed">0</span>
+        <span class="stat-label">Processed</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-engaged">0</span>
+        <span class="stat-label">Engaged</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-skipped">0</span>
+        <span class="stat-label">Skipped</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="stat-daily">0</span>
+        <span class="stat-label">Today</span>
+      </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div id="log-section" class="log-section hidden">
+      <h3>Activity Log</h3>
+      <div id="log-container" class="log-container"></div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <button id="settings-btn" class="btn btn-secondary">
+        ⚙ Settings
+      </button>
+      <button id="clear-log-btn" class="btn btn-secondary">
+        🗑 Clear Log
+      </button>
+    </footer>
+  </div>
+
+  <script src="../lib/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

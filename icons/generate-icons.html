@@ -1,0 +1,36 @@
+<!-- Open this file in a browser to generate PNG icons, then save them -->
+<!-- For development, the extension will work without icons -->
+<canvas id="c16" width="16" height="16"></canvas>
+<canvas id="c48" width="48" height="48"></canvas>
+<canvas id="c128" width="128" height="128"></canvas>
+<script>
+function drawIcon(canvas) {
+  const ctx = canvas.getContext('2d');
+  const s = canvas.width;
+  // Background circle
+  ctx.fillStyle = '#0077B5';
+  ctx.beginPath();
+  ctx.arc(s/2, s/2, s/2, 0, Math.PI * 2);
+  ctx.fill();
+  // "in" text
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = `bold ${s * 0.45}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('in', s/2, s/2);
+  // Lightning bolt overlay
+  ctx.fillStyle = '#FFD700';
+  ctx.font = `${s * 0.3}px Arial`;
+  ctx.fillText('⚡', s * 0.78, s * 0.25);
+}
+[16, 48, 128].forEach(size => {
+  const canvas = document.getElementById('c' + size);
+  drawIcon(canvas);
+  const link = document.createElement('a');
+  link.download = `icon${size}.png`;
+  link.href = canvas.toDataURL();
+  link.textContent = `Download icon${size}.png`;
+  document.body.appendChild(link);
+  document.body.appendChild(document.createElement('br'));
+});
+</script>
